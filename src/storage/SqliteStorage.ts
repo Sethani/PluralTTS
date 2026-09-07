@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { ChannelBinding, GuildSettings, IgnoredUser, PermissionGrant, PermissionScope, PronunciationEntry, TtsPermission, VoiceMapping } from '../types.js';
+import type { ChannelBinding, GuildSettings, IgnoredUser, PermissionGrant, PermissionScope, PronunciationEntry, SpeakerNamePronunciation, SpeakerPronunciationEntry, TtsPermission, VoiceMapping } from '../types.js';
 import type { Storage } from './Storage.js';
 
 type Db = Database.Database;
@@ -59,6 +59,23 @@ export class SqliteStorage implements Storage {
         to_text TEXT NOT NULL,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (guild_id, from_text)
+      );
+
+      CREATE TABLE IF NOT EXISTS speaker_pronunciation_entries (
+        guild_id TEXT NOT NULL,
+        speaker_id TEXT NOT NULL,
+        from_text TEXT NOT NULL,
+        to_text TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, speaker_id, from_text)
+      );
+
+      CREATE TABLE IF NOT EXISTS speaker_name_pronunciations (
+        guild_id TEXT NOT NULL,
+        speaker_id TEXT NOT NULL,
+        spoken_name TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, speaker_id)
       );
     `);
     rebuildVoiceMappingsIfVoiceIdIsRequired(this.db);
@@ -227,6 +244,50 @@ export class SqliteStorage implements Storage {
 
   async deletePronunciationEntry(guildId: string, fromText: string): Promise<void> {
     this.db.prepare('DELETE FROM pronunciation_entries WHERE guild_id = ? AND lower(from_text) = lower(?)').run(guildId, fromText);
+  }
+
+  async listSpeakerPronunciationEntries(guildId: string, speakerId: string): Promise<SpeakerPronunciationEntry[]> {
+    return this.db
+      .prepare('SELECT guild_id as guildId, speaker_id as speakerId, from_text as fromText, to_text as toText FROM speaker_pronunciation_entries WHERE guild_id = ? AND speaker_id = ? ORDER BY from_text')
+      .all(guildId, speakerId) as SpeakerPronunciationEntry[];
+  }
+
+  async upsertSpeakerPronunciationEntry(entry: SpeakerPronunciationEntry): Promise<void> {
+    this.db
+      .prepare(`
+        INSERT INTO speaker_pronunciation_entries (guild_id, speaker_id, from_text, to_text, updated_at)
+        VALUES (@guildId, @speakerId, @fromText, @toText, @updatedAt)
+        ON CONFLICT(guild_id, speaker_id, from_text) DO UPDATE SET
+          to_text = excluded.to_text,
+          updated_at = excluded.updated_at
+      `)
+      .run({ ...entry, updatedAt: Date.now() });
+  }
+
+  async deleteSpeakerPronunciationEntry(guildId: string, speakerId: string, fromText: string): Promise<void> {
+    this.db.prepare('DELETE FROM speaker_pronunciation_entries WHERE guild_id = ? AND speaker_id = ? AND lower(from_text) = lower(?)').run(guildId, speakerId, fromText);
+  }
+
+  async getSpeakerNamePronunciation(guildId: string, speakerId: string): Promise<SpeakerNamePronunciation | undefined> {
+    return this.db
+      .prepare('SELECT guild_id as guildId, speaker_id as speakerId, spoken_name as spokenName FROM speaker_name_pronunciations WHERE guild_id = ? AND speaker_id = ?')
+      .get(guildId, speakerId) as SpeakerNamePronunciation | undefined;
+  }
+
+  async upsertSpeakerNamePronunciation(entry: SpeakerNamePronunciation): Promise<void> {
+    this.db
+      .prepare(`
+        INSERT INTO speaker_name_pronunciations (guild_id, speaker_id, spoken_name, updated_at)
+        VALUES (@guildId, @speakerId, @spokenName, @updatedAt)
+        ON CONFLICT(guild_id, speaker_id) DO UPDATE SET
+          spoken_name = excluded.spoken_name,
+          updated_at = excluded.updated_at
+      `)
+      .run({ ...entry, updatedAt: Date.now() });
+  }
+
+  async deleteSpeakerNamePronunciation(guildId: string, speakerId: string): Promise<void> {
+    this.db.prepare('DELETE FROM speaker_name_pronunciations WHERE guild_id = ? AND speaker_id = ?').run(guildId, speakerId);
   }
 
   async close(): Promise<void> {

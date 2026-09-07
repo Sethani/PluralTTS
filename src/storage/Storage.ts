@@ -1,4 +1,4 @@
-import type { ChannelBinding, GuildSettings, IgnoredUser, PermissionGrant, PermissionScope, PronunciationEntry, TtsPermission, VoiceMapping } from '../types.js';
+import type { ChannelBinding, GuildSettings, IgnoredUser, PermissionGrant, PermissionScope, PronunciationEntry, SpeakerNamePronunciation, SpeakerPronunciationEntry, TtsPermission, VoiceMapping } from '../types.js';
 
 export interface GuildSettingsRepository {
   getGuildSettings(guildId: string): Promise<GuildSettings | undefined>;
@@ -34,6 +34,12 @@ export interface PronunciationRepository {
   listPronunciationEntries(guildId: string): Promise<PronunciationEntry[]>;
   upsertPronunciationEntry(entry: PronunciationEntry): Promise<void>;
   deletePronunciationEntry(guildId: string, fromText: string): Promise<void>;
+  listSpeakerPronunciationEntries(guildId: string, speakerId: string): Promise<SpeakerPronunciationEntry[]>;
+  upsertSpeakerPronunciationEntry(entry: SpeakerPronunciationEntry): Promise<void>;
+  deleteSpeakerPronunciationEntry(guildId: string, speakerId: string, fromText: string): Promise<void>;
+  getSpeakerNamePronunciation(guildId: string, speakerId: string): Promise<SpeakerNamePronunciation | undefined>;
+  upsertSpeakerNamePronunciation(entry: SpeakerNamePronunciation): Promise<void>;
+  deleteSpeakerNamePronunciation(guildId: string, speakerId: string): Promise<void>;
 }
 
 export interface Storage extends GuildSettingsRepository, ChannelBindingRepository, VoiceMappingRepository, PermissionGrantRepository, IgnoredUserRepository, PronunciationRepository {

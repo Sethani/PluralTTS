@@ -57,6 +57,16 @@ export interface PronunciationEntry {
   toText: string;
 }
 
+export interface SpeakerPronunciationEntry extends PronunciationEntry {
+  speakerId: string;
+}
+
+export interface SpeakerNamePronunciation {
+  guildId: string;
+  speakerId: string;
+  spokenName: string;
+}
+
 export interface TtsVoice {
   id: string;
   label: string;

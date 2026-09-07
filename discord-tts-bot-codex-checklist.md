@@ -233,15 +233,20 @@ Live Discord/Piper validation still requires a real bot token, enabled Discord g
 - [x] Add `/tts permissions` for delegated permission grants.
 - [x] Add `/tts ignore-me`.
 - [x] Add `/tts pronounce` for pronunciation overrides.
+- [x] Add speaker-specific pronunciation controls for PluralKit member IDs.
+- [x] Add spoken-name overrides for PluralKit member announcements.
 
 ## Optional pronunciation dictionary
 
 - [x] Support custom text replacements before TTS.
 - [x] Allow server-wide pronunciation entries.
-- [ ] Allow speaker-specific pronunciation entries if useful.
+- [x] Allow speaker-specific pronunciation entries if useful.
+- [x] Allow speaker-specific spoken-name overrides.
 - [x] Apply only whole-word replacements where appropriate.
 - [x] Prevent recursive replacements.
 - [x] Persist pronunciation entries.
+- [x] Persist speaker-specific pronunciation entries.
+- [x] Persist speaker-specific spoken-name overrides.
 
 ## Voice-channel awareness
 

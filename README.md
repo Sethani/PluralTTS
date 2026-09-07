@@ -82,9 +82,25 @@ The MVP expects voice IDs like `en_US-amy-medium`. The CLI provider resolves thi
 - `${PIPER_VOICES_DIR}/en_US-amy-medium.onnx`
 - `${PIPER_VOICES_DIR}/en_US-amy-medium.onnx.json`
 
-The bot does not download or bundle voice models. Review each voice model's license before use.
+The bot does not bundle voice models. Review each voice model's license before use. The `rhasspy/piper-voices` repository is MIT licensed on Hugging Face, but individual voice/data provenance is still worth checking when choosing voices.
 
 The checked-out `models/` directory is ignored by git because Piper model binaries are large. Copy or download the model files onto each host before starting the stack.
+
+You can discover and download English Piper voices from Hugging Face:
+
+```sh
+npm run voices:list -- --language en_US --quality medium
+npm run voices:list -- --root de --root fr --root nl
+npm run voices:download -- --voice en_US-amy-medium
+npm run voices:download -- --root de --root fr --root nl --root ja --root es --root zh --all
+npm run voices:download -- --language en_GB --quality medium --limit 5
+npm run voices:cleanup -- --dry-run
+npm run voices:cleanup
+```
+
+The downloader fetches matching `.onnx` and `.onnx.json` files into `models/piper`, then merges new voices into `models/piper/models.json`. Voice IDs stay canonical, such as `en_GB-northern_english_male-medium`, while friendly names such as `Dave` are labels. By default it selects only the highest available quality for each voice family. Use `--all-qualities` if you intentionally want low/medium/high variants.
+
+The cleanup command removes duplicate alias entries, unused model files, `ALIASES`, and `MODEL_CARD` files. It keeps friendly names and known gender labels on canonical voice IDs.
 
 See [HOSTING.md](HOSTING.md) for VPS deployment notes.
 
@@ -95,7 +111,7 @@ See [HOSTING.md](HOSTING.md) for VPS deployment notes.
 - `/tts status`: shows the voice connection, text channel, queue length, default voice, and in-memory reliability counters.
 - `/tts skip`: skips the current spoken message.
 - `/tts clear`: clears pending messages.
-- `/tts voices`: lists voices reported by the configured TTS provider.
+- `/tts voices language:<code?>`: lists voice languages, or friendly voice names for one language.
 - `/tts ignore-me enabled:<true|false>`: opts your normal Discord messages out of, or back into, TTS.
 - `/tts volume percent:<0-200>`: sets server volume.
 - `/tts my-volume percent:<0-200>`: sets your Discord-user volume.
@@ -121,8 +137,13 @@ See [HOSTING.md](HOSTING.md) for VPS deployment notes.
 - `/tts pronounce add from:<text> to:<text>`: adds a server-wide pronunciation replacement.
 - `/tts pronounce remove from:<text>`: removes a pronunciation replacement.
 - `/tts pronounce list`: lists pronunciation replacements.
+- `/tts pronounce speaker-add member-id:<id> from:<text> to:<text>`: adds a PluralKit member-specific pronunciation replacement.
+- `/tts pronounce speaker-remove member-id:<id> from:<text>`: removes a PluralKit member-specific pronunciation replacement.
+- `/tts pronounce speaker-list member-id:<id>`: lists PluralKit member-specific pronunciation replacements.
+- `/tts pronounce name-set member-id:<id> spoken-as:<text>`: sets how a PluralKit member name is announced.
+- `/tts pronounce name-clear member-id:<id>`: clears a PluralKit member name pronunciation.
 
-Voice options support Discord autocomplete after the updated command schema has been registered.
+Voice options support Discord autocomplete after the updated command schema has been registered. Start typing a friendly name, language code, or gender hint, such as `Dave`, `nl_NL`, `zh`, `fem`, or `masc`, then choose one of Discord's suggested voices. The stored value remains the canonical Piper ID, but normal users should not need to type it.
 
 Volume is applied as `server volume * speaker volume` and clamped to 0-200%. Speed uses the speaker-specific value when present, otherwise the server value.
 
@@ -138,8 +159,8 @@ Other controls require one of these delegated TTS permissions:
 - `leave`: `/tts leave`
 - `skip`: `/tts skip`
 - `clear`: `/tts clear`
-- `server_settings`: `/tts enable`, `/tts disable`, `/tts volume`, `/tts speed`, `/tts names`, `/tts voice set-default`
-- `speaker_settings`: `/tts last-volume`, `/tts last-speed`, `/tts pk-volume`, `/tts pk-speed`, `/tts voice set-last`, `/tts voice reset-last`, `/tts voice set-pk`, `/tts voice reset-pk`
+- `server_settings`: `/tts enable`, `/tts disable`, `/tts volume`, `/tts speed`, `/tts names`, `/tts voice set-default`, `/tts pronounce add`, `/tts pronounce remove`, `/tts pronounce list`
+- `speaker_settings`: `/tts last-volume`, `/tts last-speed`, `/tts pk-volume`, `/tts pk-speed`, `/tts voice set-last`, `/tts voice reset-last`, `/tts voice set-pk`, `/tts voice reset-pk`, `/tts pronounce speaker-add`, `/tts pronounce speaker-remove`, `/tts pronounce speaker-list`, `/tts pronounce name-set`, `/tts pronounce name-clear`
 
 `/tts skip` also works for non-admin users who are currently in the bound voice channel, even without a grant.
 
@@ -148,6 +169,8 @@ Other controls require one of these delegated TTS permissions:
 Webhook messages are checked against PluralKit's `GET /messages/{messageId}` endpoint. Confirmed PluralKit messages use the member ID internally and the member display/name for speech. Normal Discord messages are delayed briefly so the bot can cancel the original message if PluralKit deletes it during proxying.
 
 To set a PluralKit voice without relying on the last detected speaker, use the member's stable PluralKit ID with `/tts voice set-pk`. The command accepts either `abcde` or `pluralkit_member:abcde` and stores both as `pluralkit_member:abcde`.
+
+PluralKit member-specific pronunciation commands use that same stable member ID, so replacements and spoken-name settings survive display-name changes.
 
 ## Reliability
 
@@ -174,7 +197,9 @@ Persisted settings are normalized at use time so out-of-range volume/speed and u
 
 Unicode emoji are converted to spoken names where known, and to `emoji` otherwise. Custom Discord emoji continue to use their custom names.
 
-Pronunciation replacements are server-wide, require the `server_settings` TTS permission, and are applied after Discord markup/mention cleanup but before truncation. Matching is case-insensitive and whole-word/whole-phrase. Each replacement is applied once per preprocessing pass to avoid recursive replacements.
+Pronunciation replacements are applied after Discord markup/mention cleanup but before truncation. Server-wide replacements require the `server_settings` TTS permission. PluralKit member-specific replacements and spoken-name overrides require `speaker_settings`.
+
+Matching is case-insensitive and whole-word/whole-phrase. Each replacement is applied once per preprocessing pass to avoid recursive replacements. When a server-wide and speaker-specific replacement use the same source text, the speaker-specific replacement wins for that speaker.
 
 ## Mood and Style
 
@@ -182,4 +207,4 @@ Piper does not support prompt-style mood controls such as `[happy]`, `[sad]`, or
 
 ## Known MVP Limits
 
-Pronunciation overrides are intentionally left for later phases.
+Mood/style prefixes are intentionally left for a future provider that supports them.

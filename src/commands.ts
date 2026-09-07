@@ -38,7 +38,12 @@ export const ttsCommand = new SlashCommandBuilder()
   .addSubcommand((command) => command.setName('status').setDescription('Show the TTS connection status'))
   .addSubcommand((command) => command.setName('skip').setDescription('Skip the current spoken message'))
   .addSubcommand((command) => command.setName('clear').setDescription('Clear queued messages'))
-  .addSubcommand((command) => command.setName('voices').setDescription('List available TTS voices'))
+  .addSubcommand((command) =>
+    command
+      .setName('voices')
+      .setDescription('List available TTS voices by language')
+      .addStringOption((option) => option.setName('language').setDescription('Language code, such as en_US, nl_NL, or zh_CN').setAutocomplete(true))
+  )
   .addSubcommand((command) =>
     command
       .setName('ignore-me')
@@ -189,6 +194,40 @@ export const ttsCommand = new SlashCommandBuilder()
           .setName('remove')
           .setDescription('Remove a pronunciation replacement')
           .addStringOption((option) => option.setName('from').setDescription('Word or phrase to remove').setRequired(true).setMaxLength(80))
+      )
+      .addSubcommand((command) =>
+        command
+          .setName('speaker-add')
+          .setDescription('Add a PluralKit member-specific pronunciation')
+          .addStringOption((option) => option.setName('member-id').setDescription('PluralKit member ID').setRequired(true))
+          .addStringOption((option) => option.setName('from').setDescription('Word or phrase to replace').setRequired(true).setMaxLength(80))
+          .addStringOption((option) => option.setName('to').setDescription('Spoken replacement').setRequired(true).setMaxLength(120))
+      )
+      .addSubcommand((command) =>
+        command
+          .setName('speaker-remove')
+          .setDescription('Remove a PluralKit member-specific pronunciation')
+          .addStringOption((option) => option.setName('member-id').setDescription('PluralKit member ID').setRequired(true))
+          .addStringOption((option) => option.setName('from').setDescription('Word or phrase to remove').setRequired(true).setMaxLength(80))
+      )
+      .addSubcommand((command) =>
+        command
+          .setName('speaker-list')
+          .setDescription('List PluralKit member-specific pronunciations')
+          .addStringOption((option) => option.setName('member-id').setDescription('PluralKit member ID').setRequired(true))
+      )
+      .addSubcommand((command) =>
+        command
+          .setName('name-set')
+          .setDescription('Set how a PluralKit member name is announced')
+          .addStringOption((option) => option.setName('member-id').setDescription('PluralKit member ID').setRequired(true))
+          .addStringOption((option) => option.setName('spoken-as').setDescription('How to say the member name').setRequired(true).setMaxLength(120))
+      )
+      .addSubcommand((command) =>
+        command
+          .setName('name-clear')
+          .setDescription('Clear a PluralKit member name pronunciation')
+          .addStringOption((option) => option.setName('member-id').setDescription('PluralKit member ID').setRequired(true))
       )
       .addSubcommand((command) => command.setName('list').setDescription('List pronunciation replacements'))
   );

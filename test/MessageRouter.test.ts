@@ -45,6 +45,77 @@ describe('MessageRouter', () => {
     expect(enqueued[0]?.text).toBe('Riley says: Ay-duh slightly smiling face');
   });
 
+  it('applies speaker pronunciations and spoken-name overrides', async () => {
+    const enqueued: QueuedSpeech[] = [];
+    const router = createRouter({
+      playback: { enqueue: (item: QueuedSpeech) => enqueued.push(item) > 0 },
+      storage: {
+        listPronunciationEntries: vi.fn(async () => [{ guildId: 'g1', fromText: 'home', toText: 'hohm' }]),
+        listSpeakerPronunciationEntries: vi.fn(async () => [
+          { guildId: 'g1', speakerId: 'pluralkit_member:m1', fromText: 'home', toText: 'hame' },
+          { guildId: 'g1', speakerId: 'pluralkit_member:m1', fromText: 'Ada', toText: 'Ay-duh' }
+        ]),
+        getSpeakerNamePronunciation: vi.fn(async () => ({ guildId: 'g1', speakerId: 'pluralkit_member:m1', spokenName: 'Rye-lee' }))
+      },
+      pluralKit: {
+        lookupMessage: vi.fn(async () => ({
+          proxyMessageId: 'm1',
+          speaker: { id: 'pluralkit_member:m1', kind: 'pluralkit_member', displayName: 'Riley' }
+        }))
+      }
+    });
+
+    await router.handleMessage(fakeMessage({ webhookId: 'webhook', content: 'Ada went home' }));
+
+    expect(enqueued[0]?.text).toBe('Rye-lee says: Ay-duh went hame');
+  });
+
+  it('resolves legacy label voice settings to canonical voice IDs', async () => {
+    const enqueued: QueuedSpeech[] = [];
+    const router = createRouter({
+      playback: { enqueue: (item: QueuedSpeech) => enqueued.push(item) > 0 },
+      tts: { listVoices: vi.fn(async () => [{ id: 'en_GB-northern_english_male-medium', label: 'Dave' }]) },
+      pluralKit: { lookupMessage: vi.fn(async () => confirmedLookup()) },
+      storage: {
+        getGuildSettings: vi.fn(async () => ({
+          guildId: 'g1',
+          defaultVoiceId: 'Dave',
+          announceNames: 'on-speaker-change',
+          enabled: true,
+          volume: 1,
+          speed: 1
+        }))
+      }
+    });
+
+    await router.handleMessage(fakeMessage({ webhookId: 'webhook', content: 'hello' }));
+
+    expect(enqueued[0]?.voiceId).toBe('en_GB-northern_english_male-medium');
+  });
+
+  it('keeps canonical voice IDs when selected directly', async () => {
+    const enqueued: QueuedSpeech[] = [];
+    const router = createRouter({
+      playback: { enqueue: (item: QueuedSpeech) => enqueued.push(item) > 0 },
+      tts: { listVoices: vi.fn(async () => [{ id: 'en_GB-alan-medium', label: 'Alan' }]) },
+      pluralKit: { lookupMessage: vi.fn(async () => confirmedLookup()) },
+      storage: {
+        getGuildSettings: vi.fn(async () => ({
+          guildId: 'g1',
+          defaultVoiceId: 'en_GB-alan-medium',
+          announceNames: 'on-speaker-change',
+          enabled: true,
+          volume: 1,
+          speed: 1
+        }))
+      }
+    });
+
+    await router.handleMessage(fakeMessage({ webhookId: 'webhook', content: 'hello' }));
+
+    expect(enqueued[0]?.voiceId).toBe('en_GB-alan-medium');
+  });
+
   it('does not queue ignored normal Discord users', async () => {
     vi.useFakeTimers();
     const enqueue = vi.fn();
@@ -72,6 +143,8 @@ function createRouter(overrides: {
     getGuildSettings: vi.fn(async () => ({ guildId: 'g1', defaultVoiceId: 'Default', announceNames: 'on-speaker-change', enabled: true, volume: 1, speed: 1 })),
     getVoiceMapping: vi.fn(async () => undefined),
     listPronunciationEntries: vi.fn(async () => []),
+    listSpeakerPronunciationEntries: vi.fn(async () => []),
+    getSpeakerNamePronunciation: vi.fn(async () => undefined),
     isUserIgnored: vi.fn(async () => false),
     ...overrides.storage
   } as unknown as Storage;
@@ -85,6 +158,13 @@ function createRouter(overrides: {
     metrics: new Metrics(),
     logger
   });
+}
+
+function confirmedLookup() {
+  return {
+    proxyMessageId: 'm1',
+    speaker: { id: 'pluralkit_member:m1', kind: 'pluralkit_member', displayName: 'Riley' }
+  };
 }
 
 function fakeMessage(overrides: { content?: string; webhookId?: string | null } = {}) {

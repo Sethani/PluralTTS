@@ -8,7 +8,7 @@ import { PluralKitClient } from './pluralkit/PluralKitClient.js';
 import { GuildPlayback } from './playback/GuildPlayback.js';
 import { MessageRouter } from './messages/MessageRouter.js';
 import { Metrics } from './metrics/Metrics.js';
-import type { PermissionGrant, PermissionScope, TtsPermission } from './types.js';
+import type { PermissionGrant, PermissionScope, TtsPermission, TtsVoice } from './types.js';
 import { normalizeGuildSettings, normalizePronunciationText } from './settings.js';
 
 const config = loadConfig();
@@ -137,8 +137,9 @@ async function handleTtsCommand(interaction: ChatInputCommandInteraction): Promi
 
   if (subcommand === 'voices') {
     const voices = await tts.listVoices();
+    const language = interaction.options.getString('language');
     const content = voices.length > 0
-      ? `Available voices: ${voices.map(formatVoice).join(', ')}`
+      ? formatVoicesReply(voices, language)
       : 'No voices are available from the configured TTS provider.';
     await interaction.reply(ephemeralReply(truncateDiscordReply(content)));
     return;
@@ -290,17 +291,50 @@ async function handlePronounceCommand(interaction: ChatInputCommandInteraction, 
     return;
   }
 
+  if (subcommand === 'speaker-list') {
+    const speakerId = pluralKitSpeakerIdFromInteraction(interaction);
+    const entries = await storage.listSpeakerPronunciationEntries(guildId, speakerId);
+    const content = entries.length > 0
+      ? entries.map((entry) => `${entry.fromText} -> ${entry.toText}`).join('\n')
+      : `No pronunciation replacements configured for PluralKit member ${speakerId.slice('pluralkit_member:'.length)}.`;
+    await interaction.reply(ephemeralReply(truncateDiscordReply(content)));
+    return;
+  }
+
+  if (subcommand === 'name-set') {
+    const speakerId = pluralKitSpeakerIdFromInteraction(interaction);
+    const spokenName = normalizePronunciationText(interaction.options.getString('spoken-as', true));
+    if (!spokenName) {
+      await interaction.reply(ephemeralReply('Spoken name cannot be empty.'));
+      return;
+    }
+
+    await storage.upsertSpeakerNamePronunciation({ guildId, speakerId, spokenName });
+    await interaction.reply(ephemeralReply(`PluralKit member ${speakerId.slice('pluralkit_member:'.length)} will be announced as: ${spokenName}`));
+    return;
+  }
+
+  if (subcommand === 'name-clear') {
+    const speakerId = pluralKitSpeakerIdFromInteraction(interaction);
+    await storage.deleteSpeakerNamePronunciation(guildId, speakerId);
+    await interaction.reply(ephemeralReply(`Cleared name pronunciation for PluralKit member ${speakerId.slice('pluralkit_member:'.length)}.`));
+    return;
+  }
+
   const fromText = normalizePronunciationText(interaction.options.getString('from', true));
   if (!fromText) {
     await interaction.reply(ephemeralReply('Pronunciation source text cannot be empty.'));
     return;
   }
 
-  if (subcommand === 'add') {
-    const entries = await storage.listPronunciationEntries(guildId);
+  if (subcommand === 'add' || subcommand === 'speaker-add') {
+    const speakerId = subcommand === 'speaker-add' ? pluralKitSpeakerIdFromInteraction(interaction) : undefined;
+    const entries = speakerId
+      ? await storage.listSpeakerPronunciationEntries(guildId, speakerId)
+      : await storage.listPronunciationEntries(guildId);
     const existing = entries.find((entry) => entry.fromText.toLowerCase() === fromText.toLowerCase());
     if (!existing && entries.length >= 100) {
-      await interaction.reply(ephemeralReply('This server already has the maximum of 100 pronunciation replacements.'));
+      await interaction.reply(ephemeralReply(speakerId ? 'This speaker already has the maximum of 100 pronunciation replacements.' : 'This server already has the maximum of 100 pronunciation replacements.'));
       return;
     }
 
@@ -311,14 +345,25 @@ async function handlePronounceCommand(interaction: ChatInputCommandInteraction, 
     }
 
     const storedFromText = existing?.fromText ?? fromText;
-    await storage.upsertPronunciationEntry({ guildId, fromText: storedFromText, toText });
-    await interaction.reply(ephemeralReply(`Pronunciation added: ${storedFromText} -> ${toText}`));
+    if (speakerId) {
+      await storage.upsertSpeakerPronunciationEntry({ guildId, speakerId, fromText: storedFromText, toText });
+      await interaction.reply(ephemeralReply(`Speaker pronunciation added for PluralKit member ${speakerId.slice('pluralkit_member:'.length)}: ${storedFromText} -> ${toText}`));
+    } else {
+      await storage.upsertPronunciationEntry({ guildId, fromText: storedFromText, toText });
+      await interaction.reply(ephemeralReply(`Pronunciation added: ${storedFromText} -> ${toText}`));
+    }
     return;
   }
 
-  if (subcommand === 'remove') {
-    await storage.deletePronunciationEntry(guildId, fromText);
-    await interaction.reply(ephemeralReply(`Pronunciation removed: ${fromText}`));
+  if (subcommand === 'remove' || subcommand === 'speaker-remove') {
+    const speakerId = subcommand === 'speaker-remove' ? pluralKitSpeakerIdFromInteraction(interaction) : undefined;
+    if (speakerId) {
+      await storage.deleteSpeakerPronunciationEntry(guildId, speakerId, fromText);
+      await interaction.reply(ephemeralReply(`Speaker pronunciation removed for PluralKit member ${speakerId.slice('pluralkit_member:'.length)}: ${fromText}`));
+    } else {
+      await storage.deletePronunciationEntry(guildId, fromText);
+      await interaction.reply(ephemeralReply(`Pronunciation removed: ${fromText}`));
+    }
   }
 }
 
@@ -364,43 +409,39 @@ async function handleVoiceCommand(interaction: ChatInputCommandInteraction, subc
   const guildId = interaction.guildId!;
 
   if (subcommand === 'set-user') {
-    const voiceId = interaction.options.getString('voice', true);
-    await ensureVoiceExists(voiceId);
-    await upsertSpeakerMapping(guildId, `discord_user:${interaction.user.id}`, { voiceId });
-    await interaction.reply(ephemeralReply(`Your Discord user voice is now ${voiceId}.`));
+    const voice = await resolveVoiceInput(interaction.options.getString('voice', true));
+    await upsertSpeakerMapping(guildId, `discord_user:${interaction.user.id}`, { voiceId: voice.id });
+    await interaction.reply(ephemeralReply(`Your Discord user voice is now ${formatVoiceChoice(voice)}.`));
     return;
   }
 
   if (subcommand === 'set-last') {
-    const voiceId = interaction.options.getString('voice', true);
-    await ensureVoiceExists(voiceId);
+    const voice = await resolveVoiceInput(interaction.options.getString('voice', true));
     const speaker = router.getLastSpeaker(guildId);
     if (!speaker) {
       await interaction.reply(ephemeralReply('No recent speaker found yet. Send or proxy a message first, then try again.'));
       return;
     }
 
-    await upsertSpeakerMapping(guildId, speaker.id, { voiceId });
-    await interaction.reply(ephemeralReply(`${speaker.displayName}'s voice is now ${voiceId}.`));
+    await upsertSpeakerMapping(guildId, speaker.id, { voiceId: voice.id });
+    await interaction.reply(ephemeralReply(`${speaker.displayName}'s voice is now ${formatVoiceChoice(voice)}.`));
     return;
   }
 
   if (subcommand === 'set-pk') {
-    const voiceId = interaction.options.getString('voice', true);
-    await ensureVoiceExists(voiceId);
+    const voice = await resolveVoiceInput(interaction.options.getString('voice', true));
     const pluralKitMemberId = normalizePluralKitMemberId(interaction.options.getString('member-id', true));
 
-    await upsertSpeakerMapping(guildId, `pluralkit_member:${pluralKitMemberId}`, { voiceId });
-    await interaction.reply(ephemeralReply(`PluralKit member ${pluralKitMemberId}'s voice is now ${voiceId}.`));
+    await upsertSpeakerMapping(guildId, `pluralkit_member:${pluralKitMemberId}`, { voiceId: voice.id });
+    await interaction.reply(ephemeralReply(`PluralKit member ${pluralKitMemberId}'s voice is now ${formatVoiceChoice(voice)}.`));
     return;
   }
 
   if (subcommand === 'set-default') {
-    const voiceId = interaction.options.getString('voice', true);
-    await ensureVoiceExists(voiceId);
+    const voice = await resolveVoiceInput(interaction.options.getString('voice', true));
     const settings = await ensureGuildSettings(guildId);
-    await storage.upsertGuildSettings({ ...settings, defaultVoiceId: voiceId });
-    await interaction.reply(ephemeralReply(`Server default voice is now ${voiceId}.`));
+    await storage.upsertGuildSettings({ ...settings, defaultVoiceId: voice.id });
+    await interaction.reply(ephemeralReply(`Server default voice is now ${formatVoiceChoice(voice)}.`));
     return;
   }
 
@@ -442,13 +483,24 @@ async function upsertSpeakerMapping(guildId: string, speakerId: string, patch: {
 
 async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const focused = interaction.options.getFocused(true);
-  if (focused.name !== 'voice') {
+  if (focused.name !== 'voice' && focused.name !== 'language') {
     await interaction.respond([]);
     return;
   }
 
   const query = String(focused.value).toLowerCase();
   const voices = await tts.listVoices();
+
+  if (focused.name === 'language') {
+    const languages = countVoicesByLanguage(voices);
+    const choices = Array.from(languages.entries())
+      .filter(([language]) => language.toLowerCase().includes(query))
+      .slice(0, 25)
+      .map(([language, count]) => ({ name: `${language} (${count})`, value: language }));
+    await interaction.respond(choices);
+    return;
+  }
+
   const choices = voices
     .filter((voice) => {
       const searchable = `${voice.id} ${voice.label} ${voice.language ?? ''} ${voice.gender ?? ''}`.toLowerCase();
@@ -456,7 +508,7 @@ async function handleAutocomplete(interaction: AutocompleteInteraction): Promise
     })
     .slice(0, 25)
     .map((voice) => ({
-      name: formatVoice(voice).slice(0, 100),
+      name: formatVoiceChoice(voice).slice(0, 100),
       value: voice.id
     }));
 
@@ -481,19 +533,73 @@ async function ensureGuildSettings(guildId: string) {
   return settings;
 }
 
-async function ensureVoiceExists(voiceId: string): Promise<void> {
+async function resolveVoiceInput(voiceId: string): Promise<TtsVoice> {
   const voices = await tts.listVoices();
-  if (voices.some((voice) => voice.id === voiceId)) {
-    return;
+  const normalized = voiceId.toLowerCase();
+  const voice = voices.find((candidate) => candidate.id.toLowerCase() === normalized || candidate.label.toLowerCase() === normalized);
+  if (voice) {
+    return voice;
   }
 
-  const available = voices.map((voice) => voice.id).join(', ') || 'none';
-  throw new Error(`Unknown voice "${voiceId}". Available voices: ${available}`);
+  throw new Error(`Unknown voice "${voiceId}". Use autocomplete in the voice field, or run /tts voices language:<code> to browse friendly names.`);
 }
 
-function formatVoice(voice: { id: string; label: string; language?: string; gender?: string }): string {
-  const details = [voice.language, voice.gender].filter(Boolean).join(' ');
-  return details ? `${voice.id} (${details})` : voice.id;
+function formatVoicesReply(voices: TtsVoice[], language: string | null): string {
+  const languages = countVoicesByLanguage(voices);
+  const normalizedLanguage = language?.trim();
+
+  if (!normalizedLanguage) {
+    return [
+      'Voice languages:',
+      Array.from(languages.entries()).map(([code, count]) => `${code}: ${count}`).join('\n'),
+      'Use /tts voices language:<code> to list friendly voice names.'
+    ].join('\n');
+  }
+
+  const selected = voices
+    .filter((voice) => voice.language?.toLowerCase() === normalizedLanguage.toLowerCase())
+    .sort(compareVoices);
+
+  if (selected.length === 0) {
+    return `No voices found for ${normalizedLanguage}. Available languages: ${Array.from(languages.keys()).join(', ') || 'none'}.`;
+  }
+
+  return [
+    `Voices for ${selected[0]?.language ?? normalizedLanguage}:`,
+    ...selected.map((voice) => `- ${formatVoiceChoice(voice)}`)
+  ].join('\n');
+}
+
+function countVoicesByLanguage(voices: TtsVoice[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const voice of voices) {
+    const language = voice.language ?? 'unknown';
+    counts.set(language, (counts.get(language) ?? 0) + 1);
+  }
+
+  return new Map(Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function formatVoiceChoice(voice: { id: string; label: string; language?: string; gender?: string }): string {
+  const gender = formatGender(voice.gender);
+  const details = [voice.language, gender].filter(Boolean).join(', ');
+  return details ? `${voice.label} (${details})` : voice.label;
+}
+
+function compareVoices(a: TtsVoice, b: TtsVoice): number {
+  return a.label.localeCompare(b.label) || a.id.localeCompare(b.id);
+}
+
+function formatGender(gender: string | undefined): string | undefined {
+  if (gender === 'masculine') {
+    return 'masc';
+  }
+
+  if (gender === 'feminine') {
+    return 'fem';
+  }
+
+  return undefined;
 }
 
 function formatNameMode(mode: 'on-speaker-change' | 'always' | 'never'): string {
@@ -526,6 +632,10 @@ function requiredTtsPermission(group: string | null, subcommand: string): TtsPer
   }
 
   if (group === 'pronounce') {
+    if (subcommand.startsWith('speaker-') || subcommand.startsWith('name-')) {
+      return 'speaker_settings';
+    }
+
     return 'server_settings';
   }
 
@@ -629,6 +739,10 @@ function normalizePluralKitMemberId(input: string): string {
   }
 
   return withoutPrefix;
+}
+
+function pluralKitSpeakerIdFromInteraction(interaction: ChatInputCommandInteraction): string {
+  return `pluralkit_member:${normalizePluralKitMemberId(interaction.options.getString('member-id', true))}`;
 }
 
 function ephemeralReply(content: string): InteractionReplyOptions {

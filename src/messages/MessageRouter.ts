@@ -107,7 +107,7 @@ export class MessageRouter {
       return;
     }
 
-    await this.enqueue(message, lookup.speaker, lookup.speaker.displayName);
+    await this.enqueue(message, lookup.speaker);
   }
 
   private async enqueueNormalMessage(message: Message, voiceChannelId: string): Promise<void> {
@@ -134,7 +134,7 @@ export class MessageRouter {
     });
   }
 
-  private async enqueue(message: Message, speaker: Speaker, announceName = speaker.displayName): Promise<void> {
+  private async enqueue(message: Message, speaker: Speaker): Promise<void> {
     this.lastSpeakers.set(message.guildId!, speaker);
     const settings = normalizeGuildSettings(await this.options.storage.getGuildSettings(message.guildId!), message.guildId!, this.options.config.tts.defaultVoiceId);
     const mapping = normalizeVoiceMapping(await this.options.storage.getVoiceMapping(message.guildId!, speaker.id));
@@ -148,10 +148,14 @@ export class MessageRouter {
 
     const volume = clamp(settings.volume * (mapping?.volume ?? 1), 0, 2);
     const speed = clamp(mapping?.speed ?? settings.speed, 0.5, 2);
-    const pronunciations = await this.options.storage.listPronunciationEntries(message.guildId!);
+    const [globalPronunciations, speakerPronunciations, namePronunciation] = await Promise.all([
+      this.options.storage.listPronunciationEntries(message.guildId!),
+      this.options.storage.listSpeakerPronunciationEntries(message.guildId!, speaker.id),
+      this.options.storage.getSpeakerNamePronunciation(message.guildId!, speaker.id)
+    ]);
     const spoken = preprocessMessage(message.content, {
       maxLength: this.options.config.messages.maxSpokenLength,
-      pronunciations,
+      pronunciations: mergePronunciations(globalPronunciations, speakerPronunciations),
       mentions: {
         user: (id) => message.guild?.members.cache.get(id)?.displayName,
         channel: (id) => message.guild?.channels.cache.get(id)?.name,
@@ -171,6 +175,7 @@ export class MessageRouter {
     const shouldAnnounce =
       announceNames === 'always' ||
       (announceNames === 'on-speaker-change' && (!lastAnnounced || lastAnnounced.speakerId !== speaker.id || lastSpeakerExpired));
+    const announceName = namePronunciation?.spokenName ?? speaker.displayName;
     const text = shouldAnnounce ? `${announceName} says: ${spoken}` : spoken;
 
     if (shouldAnnounce) {
@@ -205,15 +210,17 @@ export class MessageRouter {
       return undefined;
     }
 
-    if (preferredVoiceId && voices.some((voice) => voice.id === preferredVoiceId)) {
-      return preferredVoiceId;
+    const preferredVoice = preferredVoiceId ? findVoiceByIdOrLabel(voices, preferredVoiceId) : undefined;
+    if (preferredVoice) {
+      return preferredVoice.id;
     }
 
-    if (voices.some((voice) => voice.id === defaultVoiceId)) {
+    const defaultVoice = findVoiceByIdOrLabel(voices, defaultVoiceId);
+    if (defaultVoice) {
       if (preferredVoiceId) {
-        this.options.logger.warn({ guildId, preferredVoiceId, fallbackVoiceId: defaultVoiceId }, 'Configured speaker voice is unavailable; using server default');
+        this.options.logger.warn({ guildId, preferredVoiceId, fallbackVoiceId: defaultVoice.id }, 'Configured speaker voice is unavailable; using server default');
       }
-      return defaultVoiceId;
+      return defaultVoice.id;
     }
 
     const fallbackVoiceId = voices[0]?.id;
@@ -240,4 +247,29 @@ export class MessageRouter {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function findVoiceByIdOrLabel(voices: TtsVoice[], input: string): TtsVoice | undefined {
+  const normalized = input.toLowerCase();
+  return voices.find((voice) => voice.id.toLowerCase() === normalized || voice.label.toLowerCase() === normalized);
+}
+
+function mergePronunciations(
+  globalEntries: Array<{ fromText: string; toText: string }>,
+  speakerEntries: Array<{ fromText: string; toText: string }>
+): Array<{ fromText: string; toText: string }> {
+  const seen = new Set<string>();
+  const merged = [];
+
+  for (const entry of [...speakerEntries, ...globalEntries]) {
+    const key = entry.fromText.trim().toLowerCase();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(entry);
+  }
+
+  return merged;
 }

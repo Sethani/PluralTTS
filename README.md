@@ -1,6 +1,6 @@
 # PluralTTS
 
-A minimal Discord voice-channel TTS bot with basic PluralKit support. It uses `discord.js`, `@discordjs/voice`, SQLite for development storage, and a modular Piper TTS provider so the database and speech engine can be swapped later.
+A minimal Discord voice-channel TTS bot with basic PluralKit support. It uses `discord.js`, `@discordjs/voice`, SQLite or PostgreSQL for storage, and a modular Piper TTS provider so the database and speech engine can be swapped later.
 
 ## Requirements
 
@@ -19,6 +19,23 @@ A minimal Discord voice-channel TTS bot with basic PluralKit support. It uses `d
   - Speak
 - Piper installed as a CLI, or a compatible HTTP sidecar.
 - One or more Piper voice model/config pairs in `PIPER_VOICES_DIR`.
+
+## Database
+
+SQLite is the default and is enough for one-machine development or small self-hosting:
+
+```env
+DATABASE_URL=sqlite:./plural-tts.db
+```
+
+PostgreSQL is supported for hosted databases and production-style deployments:
+
+```env
+DATABASE_URL=postgresql://user:password@host:5432/database
+DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+```
+
+`postgres://` URLs also work. Use `sslmode=require` for hosted providers that require TLS.
 
 ## Setup
 
@@ -68,6 +85,22 @@ The compose stack runs:
 - `plural-tts-data`: a Docker volume containing the SQLite database.
 
 Compose overrides the bot's runtime environment so the bot talks to Piper privately at `http://piper:8080` and stores SQLite data at `/data/plural-tts.db`.
+
+To point the Docker bot at a hosted database, set `BOT_DATABASE_URL` in `.env`:
+
+```env
+BOT_DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+```
+
+For a local Postgres container, start the optional profile and use `postgres` as the host from inside Docker:
+
+```sh
+docker compose --profile postgres up -d postgres
+```
+
+```env
+BOT_DATABASE_URL=postgresql://plural_tts:change-me@postgres:5432/plural_tts
+```
 
 To update slash commands from Docker, run:
 

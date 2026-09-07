@@ -20,6 +20,11 @@ export interface PluralKitLookup {
   speaker: Speaker;
 }
 
+export interface PluralKitLookupOptions {
+  attempts?: number;
+  retryDelayMs?: number;
+}
+
 export class PluralKitClient {
   private readonly cache = new Map<string, PluralKitLookup | null>();
   private blockedUntil = 0;
@@ -34,11 +39,25 @@ export class PluralKitClient {
     }
   ) {}
 
-  async lookupMessage(messageId: string, guildId?: string): Promise<PluralKitLookup | null> {
+  async lookupMessage(messageId: string, guildId?: string, options: PluralKitLookupOptions = {}): Promise<PluralKitLookup | null> {
     if (this.cache.has(messageId)) {
       return this.cache.get(messageId) ?? null;
     }
 
+    const attempts = options.attempts ?? 1;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const lookup = await this.lookupMessageOnce(messageId, guildId, attempt >= attempts);
+      if (lookup || this.cache.has(messageId) || attempt >= attempts) {
+        return lookup;
+      }
+
+      await delay(options.retryDelayMs ?? 0);
+    }
+
+    return null;
+  }
+
+  private async lookupMessageOnce(messageId: string, guildId: string | undefined, cacheMiss: boolean): Promise<PluralKitLookup | null> {
     if (Date.now() < this.blockedUntil) {
       this.options.logger.debug({ messageId, blockedUntil: this.blockedUntil }, 'Skipping PluralKit lookup during rate-limit backoff');
       return null;
@@ -54,7 +73,9 @@ export class PluralKitClient {
       });
 
       if (response.status === 404) {
-        this.cache.set(messageId, null);
+        if (cacheMiss) {
+          this.cache.set(messageId, null);
+        }
         return null;
       }
 
@@ -100,6 +121,10 @@ export class PluralKitClient {
       clearTimeout(timeout);
     }
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function retryAfterMs(header: string | null): number {

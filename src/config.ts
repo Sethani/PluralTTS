@@ -22,7 +22,9 @@ const schema = z.object({
   TTS_RETRY_DELAY_MS: z.coerce.number().int().nonnegative().default(500),
   PLURALKIT_API_BASE: z.string().url().default('https://api.pluralkit.me/v2'),
   PLURALKIT_USER_AGENT: z.string().min(1).default('PluralTTS/0.1.0'),
-  PLURALKIT_LOOKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(3000)
+  PLURALKIT_LOOKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+  PLURALKIT_WEBHOOK_LOOKUP_ATTEMPTS: z.coerce.number().int().positive().default(4),
+  PLURALKIT_WEBHOOK_LOOKUP_DELAY_MS: z.coerce.number().int().nonnegative().default(500)
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
@@ -64,7 +66,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     pluralKit: {
       apiBase: parsed.PLURALKIT_API_BASE,
       userAgent: parsed.PLURALKIT_USER_AGENT,
-      lookupTimeoutMs: parsed.PLURALKIT_LOOKUP_TIMEOUT_MS
+      lookupTimeoutMs: parsed.PLURALKIT_LOOKUP_TIMEOUT_MS,
+      webhookLookupAttempts: parsed.PLURALKIT_WEBHOOK_LOOKUP_ATTEMPTS,
+      webhookLookupDelayMs: parsed.PLURALKIT_WEBHOOK_LOOKUP_DELAY_MS
     }
   };
 }

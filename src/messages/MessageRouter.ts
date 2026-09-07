@@ -93,7 +93,10 @@ export class MessageRouter {
   }
 
   private async handleWebhookMessage(message: Message, voiceChannelId: string): Promise<void> {
-    const lookup = await this.options.pluralKit.lookupMessage(message.id, message.guildId!);
+    const lookup = await this.options.pluralKit.lookupMessage(message.id, message.guildId!, {
+      attempts: this.options.config.pluralKit.webhookLookupAttempts,
+      retryDelayMs: this.options.config.pluralKit.webhookLookupDelayMs
+    });
     if (!lookup) {
       this.options.metrics.increment(message.guildId!, 'messagesIgnored');
       return;

@@ -164,6 +164,8 @@ Useful environment settings:
 
 The Piper HTTP provider rejects empty or non-audio responses. The PluralKit client caches successful and missing-message lookups, reports lookup failures to status counters, and pauses lookups briefly when PluralKit returns `429`.
 
+Fresh PluralKit webhook messages are retried briefly before the bot gives up, because the webhook can arrive before PluralKit's message API is ready. Tune this with `PLURALKIT_WEBHOOK_LOOKUP_ATTEMPTS` and `PLURALKIT_WEBHOOK_LOOKUP_DELAY_MS`.
+
 If a saved speaker voice is no longer available, the bot falls back to the server default. If the server default is also unavailable, it uses the first voice reported by the provider. Messages are skipped only when the provider reports no voices or cannot list voices.
 
 Persisted settings are normalized at use time so out-of-range volume/speed and unknown name modes fall back to safe values.

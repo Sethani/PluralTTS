@@ -130,6 +130,23 @@ describe('MessageRouter', () => {
 
     expect(enqueue).not.toHaveBeenCalled();
   });
+
+  it('uses Discord-user nickname overrides for normal messages', async () => {
+    vi.useFakeTimers();
+    const enqueued: QueuedSpeech[] = [];
+    const router = createRouter({
+      playback: { enqueue: (item: QueuedSpeech) => enqueued.push(item) > 0 },
+      storage: {
+        getSpeakerNamePronunciation: vi.fn(async () => ({ guildId: 'g1', speakerId: 'discord_user:u1', spokenName: 'Addie' }))
+      },
+      pluralKit: { lookupMessage: vi.fn(async () => null) }
+    });
+
+    await router.handleMessage(fakeMessage({ content: 'hello' }));
+    await vi.runAllTimersAsync();
+
+    expect(enqueued[0]?.text).toBe('Addie says: hello');
+  });
 });
 
 function createRouter(overrides: {

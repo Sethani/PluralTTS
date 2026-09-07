@@ -157,6 +157,28 @@ async function handleTtsCommand(interaction: ChatInputCommandInteraction): Promi
     return;
   }
 
+  if (subcommand === 'nickname') {
+    const spokenName = normalizePronunciationText(interaction.options.getString('name', true));
+    if (!spokenName) {
+      await interaction.reply(ephemeralReply('Nickname cannot be empty.'));
+      return;
+    }
+
+    await storage.upsertSpeakerNamePronunciation({
+      guildId: interaction.guild.id,
+      speakerId: `discord_user:${interaction.user.id}`,
+      spokenName
+    });
+    await interaction.reply(ephemeralReply(`Your Discord TTS nickname is now: ${spokenName}`));
+    return;
+  }
+
+  if (subcommand === 'nickname-clear') {
+    await storage.deleteSpeakerNamePronunciation(interaction.guild.id, `discord_user:${interaction.user.id}`);
+    await interaction.reply(ephemeralReply('Your Discord TTS nickname was cleared.'));
+    return;
+  }
+
   if (subcommand === 'volume') {
     const settings = await ensureGuildSettings(interaction.guild.id);
     const percent = interaction.options.getInteger('percent', true);
@@ -659,6 +681,8 @@ function requiredTtsPermission(group: string | null, subcommand: string): TtsPer
     case 'skip':
       return 'skip';
     case 'ignore-me':
+    case 'nickname':
+    case 'nickname-clear':
       return undefined;
     case 'clear':
       return 'clear';
@@ -697,7 +721,11 @@ async function canUseTtsPermission(member: GuildMember, permission: TtsPermissio
     return true;
   }
 
-  if (permission === 'skip' && (await isMemberInBoundVoiceChannel(member))) {
+  if (permission === 'join' && member.voice.channelId) {
+    return true;
+  }
+
+  if ((permission === 'leave' || permission === 'skip') && (await isMemberInBoundVoiceChannel(member))) {
     return true;
   }
 

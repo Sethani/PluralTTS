@@ -146,6 +146,8 @@ See [HOSTING.md](HOSTING.md) for VPS deployment notes.
 - `/tts clear`: clears pending messages.
 - `/tts voices language:<code?>`: lists voice languages, or friendly voice names for one language.
 - `/tts ignore-me enabled:<true|false>`: opts your normal Discord messages out of, or back into, TTS.
+- `/tts nickname name:<text>`: sets the name TTS uses when announcing your normal Discord messages.
+- `/tts nickname-clear`: clears your Discord TTS nickname.
 - `/tts volume percent:<0-200>`: sets server volume.
 - `/tts my-volume percent:<0-200>`: sets your Discord-user volume.
 - `/tts last-volume percent:<0-200>`: sets the most recently detected speaker volume.
@@ -184,7 +186,7 @@ Volume is applied as `server volume * speaker volume` and clamped to 0-200%. Spe
 
 The server owner and members with Discord's `Administrator` permission can always manage TTS. Permission management commands are admin-only and cannot lock admins out.
 
-Everyone can use informational and personal controls: `/tts status`, `/tts voices`, `/tts ignore-me`, `/tts my-volume`, `/tts my-speed`, `/tts voice set-user`, and `/tts voice reset-user`.
+Everyone can use informational and personal controls: `/tts status`, `/tts voices`, `/tts ignore-me`, `/tts nickname`, `/tts nickname-clear`, `/tts my-volume`, `/tts my-speed`, `/tts voice set-user`, and `/tts voice reset-user`.
 
 Other controls require one of these delegated TTS permissions:
 
@@ -195,7 +197,7 @@ Other controls require one of these delegated TTS permissions:
 - `server_settings`: `/tts enable`, `/tts disable`, `/tts volume`, `/tts speed`, `/tts names`, `/tts voice set-default`, `/tts pronounce add`, `/tts pronounce remove`, `/tts pronounce list`
 - `speaker_settings`: `/tts last-volume`, `/tts last-speed`, `/tts pk-volume`, `/tts pk-speed`, `/tts voice set-last`, `/tts voice reset-last`, `/tts voice set-pk`, `/tts voice reset-pk`, `/tts pronounce speaker-add`, `/tts pronounce speaker-remove`, `/tts pronounce speaker-list`, `/tts pronounce name-set`, `/tts pronounce name-clear`
 
-`/tts skip` also works for non-admin users who are currently in the bound voice channel, even without a grant.
+`/tts join` also works for non-admin users who are currently in any voice channel, even without a grant. `/tts leave` and `/tts skip` also work for non-admin users who are currently in the bound voice channel. Grants are only needed when you want broader access than that.
 
 ## PluralKit Behavior
 
@@ -204,6 +206,8 @@ Webhook messages are checked against PluralKit's `GET /messages/{messageId}` end
 To set a PluralKit voice without relying on the last detected speaker, use the member's stable PluralKit ID with `/tts voice set-pk`. The command accepts either `abcde` or `pluralkit_member:abcde` and stores both as `pluralkit_member:abcde`.
 
 PluralKit member-specific pronunciation commands use that same stable member ID, so replacements and spoken-name settings survive display-name changes.
+
+For normal Discord messages, each user can set their own TTS announcement nickname with `/tts nickname`. This does not affect PluralKit messages, which use the PluralKit member name or member-specific spoken-name override.
 
 ## Reliability
 

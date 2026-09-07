@@ -156,6 +156,7 @@ Live Discord/Piper validation still requires a real bot token, enabled Discord g
 - [x] Do not repeatedly announce the same speaker for consecutive messages.
 - [x] Reset the current-speaker state after a sufficiently long silence if desired.
 - [x] Ensure PluralKit member names are used instead of the Discord account name.
+- [x] Allow normal Discord users to set their own TTS announcement nickname.
 
 ## Volume control
 
@@ -232,6 +233,7 @@ Live Discord/Piper validation still requires a real bot token, enabled Discord g
 - [x] Add `/tts names` for name-announcement mode.
 - [x] Add `/tts permissions` for delegated permission grants.
 - [x] Add `/tts ignore-me`.
+- [x] Add `/tts nickname`.
 - [x] Add `/tts pronounce` for pronunciation overrides.
 - [x] Add speaker-specific pronunciation controls for PluralKit member IDs.
 - [x] Add spoken-name overrides for PluralKit member announcements.

@@ -52,6 +52,13 @@ export const ttsCommand = new SlashCommandBuilder()
   )
   .addSubcommand((command) =>
     command
+      .setName('nickname')
+      .setDescription('Set the name TTS uses when announcing your Discord messages')
+      .addStringOption((option) => option.setName('name').setDescription('Name to use in speaker announcements').setRequired(true).setMaxLength(120))
+  )
+  .addSubcommand((command) => command.setName('nickname-clear').setDescription('Clear your TTS speaker nickname'))
+  .addSubcommand((command) =>
+    command
       .setName('volume')
       .setDescription('Set the server TTS volume')
       .addIntegerOption((option) => option.setName('percent').setDescription('Volume percent, 0 to 200').setRequired(true).setMinValue(0).setMaxValue(200))
